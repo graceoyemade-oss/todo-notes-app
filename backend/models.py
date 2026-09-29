@@ -3,11 +3,13 @@ from pydantic import BaseModel
 
 class TodoCreate(BaseModel):
     text: str
+    due_date: str | None = None
 
 
 class TodoUpdate(BaseModel):
     text: str | None = None
     completed: bool | None = None
+    due_date: str | None = None
 
 
 class NoteCreate(BaseModel):

@@ -279,6 +279,71 @@ body {
   color: #666;
 }
 
+/* Due dates */
+.due-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.overdue-badge {
+  background: #e74c3c;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.today-badge {
+  background: #f39c12;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.todo.overdue {
+  border-left: 4px solid #e74c3c;
+  background: #fdf2f2;
+}
+
+.todo.due-today {
+  border-left: 4px solid #f39c12;
+}
+
+.date-edit {
+  width: 28px;
+  height: 28px;
+  padding: 2px;
+  border: none;
+  border-radius: 6px;
+  background: #ecf0f1;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.date-edit:hover {
+  background: #d5dbdb;
+}
+
+.add-form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.add-form-row input[type='date'] {
+  flex: 1;
+}
+
+.add-form-row button {
+  flex: 1;
+}
+
 /* Misc */
 .loading,
 .empty {

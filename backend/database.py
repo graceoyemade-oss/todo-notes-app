@@ -24,6 +24,7 @@ def init_db():
             text TEXT NOT NULL,
             completed INTEGER NOT NULL DEFAULT 0,
             position INTEGER NOT NULL DEFAULT 0,
+            due_date TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -40,5 +41,11 @@ def init_db():
             value TEXT NOT NULL DEFAULT ''
         );
     """)
+
+    # Migration: add due_date column if it doesn't exist (for existing databases)
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(todos)").fetchall()]
+    if "due_date" not in columns:
+        conn.execute("ALTER TABLE todos ADD COLUMN due_date TEXT")
+
     conn.commit()
     conn.close()

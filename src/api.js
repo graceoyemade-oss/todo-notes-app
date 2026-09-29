@@ -15,7 +15,7 @@ async function request(path, options = {}) {
 
 // Todos
 export const getTodos = () => request('/todos')
-export const createTodo = (text) => request('/todos', { method: 'POST', body: JSON.stringify({ text }) })
+export const createTodo = (text, due_date) => request('/todos', { method: 'POST', body: JSON.stringify({ text, due_date }) })
 export const updateTodo = (id, data) => request(`/todos/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
 export const deleteTodo = (id) => request(`/todos/${id}`, { method: 'DELETE' })
 export const moveTodo = (id, direction) => request(`/todos/${id}/move?direction=${direction}`, { method: 'POST' })

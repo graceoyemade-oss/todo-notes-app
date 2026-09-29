@@ -26,7 +26,7 @@ init_db()
 def list_todos():
     db = get_db()
     rows = db.execute(
-        "SELECT id, text, completed, position FROM todos ORDER BY position, id"
+        "SELECT id, text, completed, position, due_date FROM todos ORDER BY position, id"
     ).fetchall()
     db.close()
     return [dict(r) for r in rows]
@@ -41,11 +41,12 @@ def create_todo(body: TodoCreate):
     db = get_db()
     max_pos = db.execute("SELECT COALESCE(MAX(position), -1) AS m FROM todos").fetchone()["m"]
     cur = db.execute(
-        "INSERT INTO todos (text, position) VALUES (?, ?)", (text, max_pos + 1)
+        "INSERT INTO todos (text, position, due_date) VALUES (?, ?, ?)",
+        (text, max_pos + 1, body.due_date),
     )
     db.commit()
     todo = db.execute(
-        "SELECT id, text, completed, position FROM todos WHERE id = ?", (cur.lastrowid,)
+        "SELECT id, text, completed, position, due_date FROM todos WHERE id = ?", (cur.lastrowid,)
     ).fetchone()
     db.close()
     return dict(todo)
@@ -61,14 +62,15 @@ def update_todo(todo_id: int, body: TodoUpdate):
 
     text = body.text.strip() if body.text is not None else todo["text"]
     completed = body.completed if body.completed is not None else bool(todo["completed"])
+    due_date = body.due_date if body.due_date is not None else todo["due_date"]
 
     db.execute(
-        "UPDATE todos SET text = ?, completed = ? WHERE id = ?",
-        (text, int(completed), todo_id),
+        "UPDATE todos SET text = ?, completed = ?, due_date = ? WHERE id = ?",
+        (text, int(completed), due_date, todo_id),
     )
     db.commit()
     updated = db.execute(
-        "SELECT id, text, completed, position FROM todos WHERE id = ?", (todo_id,)
+        "SELECT id, text, completed, position, due_date FROM todos WHERE id = ?", (todo_id,)
     ).fetchone()
     db.close()
     return dict(updated)
