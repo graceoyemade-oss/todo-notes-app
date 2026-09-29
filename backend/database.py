@@ -1,7 +1,12 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "app.db"
+# On Vercel the filesystem is read-only except /tmp
+if os.environ.get("VERCEL"):
+    DB_PATH = Path("/tmp/app.db")
+else:
+    DB_PATH = Path(__file__).parent / "app.db"
 
 
 def get_db():
