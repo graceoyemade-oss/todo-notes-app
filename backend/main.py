@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_db, get_db
-from models import TodoCreate, TodoUpdate, NoteCreate, NoteUpdate
+from backend.database import init_db, get_db
+from backend.models import TodoCreate, TodoUpdate, NoteCreate, NoteUpdate
 
 app = FastAPI(title="Todo & Notes API")
 
