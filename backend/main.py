@@ -6,10 +6,13 @@ from models import TodoCreate, TodoUpdate, NoteCreate, NoteUpdate
 
 app = FastAPI(title="Todo & Notes API")
 
-# Allow the React dev server (Vite) to talk to this API
+# Allow the React dev server (Vite) and deployed frontend to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://*.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
