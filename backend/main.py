@@ -2,9 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import init_db, get_db
-from backend.models import TodoCreate, TodoUpdate, NoteCreate, NoteUpdate
+from backend.models import TodoCreate, TodoUpdate, NoteCreate, NoteUpdate, OrderCreate
+from backend.email_service import send_order_confirmation
+from backend.auth import router as auth_router
 
-app = FastAPI(title="Todo & Notes API")
+app = FastAPI(title="Bookshop API")
+app.include_router(auth_router)
 
 # Allow the React dev server (Vite) and deployed frontend to talk to this API
 app.add_middleware(
@@ -20,184 +23,93 @@ app.add_middleware(
 init_db()
 
 
-# ── Todo endpoints ──────────────────────────────────────────────
+# ── Product endpoints ───────────────────────────────────────────
 
-@app.get("/api/todos")
-def list_todos():
+@app.get("/api/products")
+def list_products(category: str | None = None):
     db = get_db()
-    rows = db.execute(
-        "SELECT id, text, completed, position, due_date FROM todos ORDER BY position, id"
-    ).fetchall()
-    db.close()
-    return [dict(r) for r in rows]
-
-
-@app.post("/api/todos", status_code=201)
-def create_todo(body: TodoCreate):
-    text = body.text.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-
-    db = get_db()
-    max_pos = db.execute("SELECT COALESCE(MAX(position), -1) AS m FROM todos").fetchone()["m"]
-    cur = db.execute(
-        "INSERT INTO todos (text, position, due_date) VALUES (?, ?, ?)",
-        (text, max_pos + 1, body.due_date),
-    )
-    db.commit()
-    todo = db.execute(
-        "SELECT id, text, completed, position, due_date FROM todos WHERE id = ?", (cur.lastrowid,)
-    ).fetchone()
-    db.close()
-    return dict(todo)
-
-
-@app.patch("/api/todos/{todo_id}")
-def update_todo(todo_id: int, body: TodoUpdate):
-    db = get_db()
-    todo = db.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
-    if not todo:
-        db.close()
-        raise HTTPException(status_code=404, detail="Todo not found")
-
-    text = body.text.strip() if body.text is not None else todo["text"]
-    completed = body.completed if body.completed is not None else bool(todo["completed"])
-    due_date = body.due_date if body.due_date is not None else todo["due_date"]
-
-    db.execute(
-        "UPDATE todos SET text = ?, completed = ?, due_date = ? WHERE id = ?",
-        (text, int(completed), due_date, todo_id),
-    )
-    db.commit()
-    updated = db.execute(
-        "SELECT id, text, completed, position, due_date FROM todos WHERE id = ?", (todo_id,)
-    ).fetchone()
-    db.close()
-    return dict(updated)
-
-
-@app.delete("/api/todos/{todo_id}", status_code=204)
-def delete_todo(todo_id: int):
-    db = get_db()
-    db.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
-    db.commit()
-    # Re-pack positions so they stay 0,1,2,...
-    rows = db.execute("SELECT id FROM todos ORDER BY position, id").fetchall()
-    for i, row in enumerate(rows):
-        db.execute("UPDATE todos SET position = ? WHERE id = ?", (i, row["id"]))
-    db.commit()
-    db.close()
-
-
-@app.post("/api/todos/{todo_id}/move")
-def move_todo(todo_id: int, direction: str):
-    """Move a todo up or down by swapping positions with its neighbour."""
-    if direction not in ("up", "down"):
-        raise HTTPException(status_code=400, detail="Direction must be 'up' or 'down'")
-
-    db = get_db()
-    todo = db.execute("SELECT * FROM todos WHERE id = ?", (todo_id,)).fetchone()
-    if not todo:
-        db.close()
-        raise HTTPException(status_code=404, detail="Todo not found")
-
-    pos = todo["position"]
-    if direction == "up":
-        neighbour = db.execute(
-            "SELECT * FROM todos WHERE position < ? ORDER BY position DESC LIMIT 1", (pos,)
-        ).fetchone()
+    cur = db.cursor()
+    if category:
+        cur.execute(
+            "SELECT * FROM products WHERE category = %s ORDER BY id", (category,)
+        )
     else:
-        neighbour = db.execute(
-            "SELECT * FROM todos WHERE position > ? ORDER BY position ASC LIMIT 1", (pos,)
-        ).fetchone()
-
-    if neighbour:
-        db.execute("UPDATE todos SET position = ? WHERE id = ?", (neighbour["position"], todo_id))
-        db.execute("UPDATE todos SET position = ? WHERE id = ?", (pos, neighbour["id"]))
-        db.commit()
-
-    rows = db.execute(
-        "SELECT id, text, completed, position FROM todos ORDER BY position, id"
-    ).fetchall()
+        cur.execute("SELECT * FROM products ORDER BY id")
+    rows = cur.fetchall()
+    cur.close()
     db.close()
     return [dict(r) for r in rows]
 
 
-# ── Note endpoints ──────────────────────────────────────────────
+# ── Order endpoints ─────────────────────────────────────────────
 
-@app.get("/api/notes")
-def list_notes():
+@app.post("/api/orders", status_code=201)
+def create_order(body: OrderCreate):
+    if not body.items:
+        raise HTTPException(status_code=400, detail="Order must have at least one item")
+
     db = get_db()
-    rows = db.execute(
-        "SELECT id, title, content, created_at, updated_at FROM notes ORDER BY updated_at DESC"
-    ).fetchall()
-    db.close()
-    return [dict(r) for r in rows]
+    cur = db.cursor()
 
+    # Calculate total from the database prices (never trust the client)
+    total = 0.0
+    order_items_data = []
+    for item in body.items:
+        cur.execute("SELECT * FROM products WHERE id = %s", (item.product_id,))
+        product = cur.fetchone()
+        if not product:
+            cur.close()
+            db.close()
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        if item.quantity < 1:
+            cur.close()
+            db.close()
+            raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+        total += product["price"] * item.quantity
+        order_items_data.append({
+            "emoji": product["emoji"],
+            "title": product["title"],
+            "price": product["price"],
+            "quantity": item.quantity,
+        })
 
-@app.post("/api/notes", status_code=201)
-def create_note(body: NoteCreate):
-    db = get_db()
-    cur = db.execute(
-        "INSERT INTO notes (title, content) VALUES (?, ?)",
-        (body.title.strip(), body.content),
+    # Create the order
+    cur.execute(
+        "INSERT INTO orders (customer_name, email, phone, address, city, zip, shipping_method, subtotal, shipping_cost, tax, total) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+        (body.customer_name.strip(), body.email.strip(), body.phone.strip(), body.address.strip(), body.city.strip(), body.zip.strip(), body.shipping_method, body.subtotal, body.shipping_cost, body.tax, total),
     )
+    order_id = cur.fetchone()["id"]
+
+    # Add order items
+    for item in body.items:
+        cur.execute("SELECT price FROM products WHERE id = %s", (item.product_id,))
+        product = cur.fetchone()
+        cur.execute(
+            "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (%s, %s, %s, %s)",
+            (order_id, item.product_id, item.quantity, product["price"]),
+        )
+
     db.commit()
-    note = db.execute("SELECT * FROM notes WHERE id = ?", (cur.lastrowid,)).fetchone()
+    cur.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+    order = cur.fetchone()
+    cur.close()
     db.close()
-    return dict(note)
 
-
-@app.patch("/api/notes/{note_id}")
-def update_note(note_id: int, body: NoteUpdate):
-    db = get_db()
-    note = db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
-    if not note:
-        db.close()
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    title = body.title.strip() if body.title is not None else note["title"]
-    content = body.content if body.content is not None else note["content"]
-
-    db.execute(
-        "UPDATE notes SET title = ?, content = ? WHERE id = ?",
-        (title, content, note_id),
+    # Send confirmation email
+    send_order_confirmation(
+        to_email=body.email.strip(),
+        customer_name=body.customer_name.strip(),
+        order_id=order_id,
+        order_details={
+            "items": order_items_data,
+            "subtotal": body.subtotal,
+            "shipping_cost": body.shipping_cost,
+            "tax": body.tax,
+            "total": total,
+            "address": body.address.strip(),
+            "city": body.city.strip(),
+            "zip": body.zip.strip(),
+        },
     )
-    db.commit()
-    updated = db.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
-    db.close()
-    return dict(updated)
 
-
-@app.delete("/api/notes/{note_id}", status_code=204)
-def delete_note(note_id: int):
-    db = get_db()
-    db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-    db.commit()
-    db.close()
-
-
-# ── Settings endpoints ───────────────────────────────────────────
-
-@app.get("/api/settings/welcome_message")
-def get_welcome_message():
-    db = get_db()
-    row = db.execute(
-        "SELECT value FROM settings WHERE key = 'welcome_message'"
-    ).fetchone()
-    db.close()
-    return {"message": row["value"] if row else "Welcome! 👋"}
-
-
-@app.put("/api/settings/welcome_message")
-def update_welcome_message(body: dict):
-    message = body.get("message", "").strip()
-    db = get_db()
-    db.execute(
-        """INSERT INTO settings (key, value) VALUES ('welcome_message', ?)
-           ON CONFLICT(key) DO UPDATE SET value = ?""",
-        (message, message),
-    )
-    db.commit()
-    db.close()
-    return {"message": message}
+    return dict(order)

@@ -13,15 +13,10 @@ async function request(path, options = {}) {
   return res.json()
 }
 
-// Todos
-export const getTodos = () => request('/todos')
-export const createTodo = (text, due_date) => request('/todos', { method: 'POST', body: JSON.stringify({ text, due_date }) })
-export const updateTodo = (id, data) => request(`/todos/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
-export const deleteTodo = (id) => request(`/todos/${id}`, { method: 'DELETE' })
-export const moveTodo = (id, direction) => request(`/todos/${id}/move?direction=${direction}`, { method: 'POST' })
+// Products
+export const getProducts = (category) =>
+  request(category ? `/products?category=${category}` : '/products')
 
-// Notes
-export const getNotes = () => request('/notes')
-export const createNote = (title, content) => request('/notes', { method: 'POST', body: JSON.stringify({ title, content }) })
-export const updateNote = (id, data) => request(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
-export const deleteNote = (id) => request(`/notes/${id}`, { method: 'DELETE' })
+// Orders
+export const createOrder = (orderData) =>
+  request('/orders', { method: 'POST', body: JSON.stringify(orderData) })
